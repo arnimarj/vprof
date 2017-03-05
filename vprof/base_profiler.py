@@ -1,9 +1,10 @@
 """Base class for a profile wrapper."""
 import multiprocessing
+import multiprocessing.managers
 import os
 import sys
 import zlib
-
+import signal
 
 def get_package_code(package_path):
     """Returns package source code.
@@ -51,6 +52,8 @@ class ProcessWithException(multiprocessing.Process):
         """Returns exception from child process."""
         return self.parent_conn.recv()
 
+def mgr_init():
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 def run_in_another_process(func):
     """Runs wrapped function in separate process.
@@ -65,16 +68,27 @@ def run_in_another_process(func):
             output_dict = func(*args, **kwargs)
             manager_dict.update(output_dict)
 
-        manager = multiprocessing.Manager()
-        manager_dict = manager.dict()
-        process = ProcessWithException(
-            target=remote_wrapper, args=(manager_dict,))
-        process.start()
-        process.join()
-        exc = process.exception
-        if exc:
-            raise exc
-        return manager_dict._getvalue()  # pylint: disable=protected-access
+        manager = multiprocessing.managers.SyncManager()
+        manager.start(mgr_init)
+
+        try:
+            manager_dict = manager.dict()
+            process = ProcessWithException(
+                target=remote_wrapper, args=(manager_dict,))
+            process.start()
+
+            try:
+                process.join()
+            except KeyboardInterrupt:
+                process.join()
+
+            exc = process.exception
+            if exc:
+                raise exc
+            return manager_dict._getvalue()  # pylint: disable=protected-access
+        finally:
+            manager.shutdown()
+
     return multiprocessing_wrapper
 
 
