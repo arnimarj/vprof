@@ -129,7 +129,7 @@ class FlameGraphProfiler(base_profiler.BaseProfiler):
         with _StatProfiler() as prof:
             try:
                 runpy.run_path(self._run_object, run_name='__main__')
-            except SystemExit:
+            except (SystemExit, KeyboardInterrupt):
                 pass
 
         call_tree = prof.call_tree
@@ -149,7 +149,7 @@ class FlameGraphProfiler(base_profiler.BaseProfiler):
             prof.base_frame = inspect.currentframe()
             try:
                 exec(code, self._globs, None)
-            except SystemExit:
+            except (SystemExit, KeyboardInterrupt):
                 pass
 
         call_tree = prof.call_tree
@@ -164,7 +164,10 @@ class FlameGraphProfiler(base_profiler.BaseProfiler):
     def profile_function(self):
         """Runs statistical profiler on function."""
         with _StatProfiler() as prof:
-            self._run_object(*self._run_args, **self._run_kwargs)
+            try:
+                self._run_object(*self._run_args, **self._run_kwargs)
+            except KeyboardInterrupt:
+                pass
 
         call_tree = prof.call_tree
         return {

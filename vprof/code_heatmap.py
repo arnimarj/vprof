@@ -119,7 +119,7 @@ class CodeHeatmapProfiler(base_profiler.BaseProfiler):
                 prof.add_code(compiled_code)
             try:
                 runpy.run_path(self._run_object)
-            except SystemExit:
+            except (SystemExit, KeyboardInterrupt):
                 pass
         return {
             'objectName': self._run_object,
@@ -136,7 +136,7 @@ class CodeHeatmapProfiler(base_profiler.BaseProfiler):
                 code = compile(src_code, self._run_object, 'exec')
                 prof.add_code(code)
                 exec(code, self._globs, None)
-        except SystemExit:
+        except (SystemExit, KeyboardInterrupt):
             pass
         heatmap = prof.heatmap[os.path.abspath(self._run_object)]
         sources = src_code.split('\n')
@@ -154,7 +154,10 @@ class CodeHeatmapProfiler(base_profiler.BaseProfiler):
         """Calculates heatmap for function."""
         with _CodeHeatmapCalculator() as prof:
             prof.add_code(self._run_object.__code__)
-            self._run_object(*self._run_args, **self._run_kwargs)
+            try:
+                self._run_object(*self._run_args, **self._run_kwargs)
+            except KeyboardInterrupt:
+                pass
         code_lines, start_line = inspect.getsourcelines(self._run_object)
         filename = os.path.abspath(inspect.getsourcefile(self._run_object))
 

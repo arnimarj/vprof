@@ -40,7 +40,7 @@ class Profiler(base_profiler.BaseProfiler):
         prof.enable()
         try:
             runpy.run_path(self._run_object, run_name='__main__')
-        except SystemExit:
+        except (SystemExit, KeyboardInterrupt):
             pass
         prof.disable()
         prof_stats = pstats.Stats(prof)
@@ -61,7 +61,7 @@ class Profiler(base_profiler.BaseProfiler):
             with open(self._run_object, 'rb') as srcfile:
                 code = compile(srcfile.read(), self._run_object, 'exec')
             prof.runctx(code, self._globs, None)
-        except SystemExit:
+        except (SystemExit, KeyboardInterrupt):
             pass
         prof_stats = pstats.Stats(prof)
         prof_stats.calc_callees()
@@ -77,7 +77,10 @@ class Profiler(base_profiler.BaseProfiler):
         """Runs cProfile on function."""
         prof = cProfile.Profile()
         prof.enable()
-        self._run_object(*self._run_args, **self._run_kwargs)
+        try:
+            self._run_object(*self._run_args, **self._run_kwargs)
+        except KeyboardInterrupt:
+            pass
         prof.disable()
         prof_stats = pstats.Stats(prof)
         prof_stats.calc_callees()

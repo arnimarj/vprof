@@ -179,7 +179,7 @@ class MemoryProfiler(base_profiler.BaseProfiler):
             try:
                 prof.compute_mem_overhead()
                 runpy.run_path(self._run_object, run_name='__main__')
-            except SystemExit:
+            except (SystemExit, KeyboardInterrupt):
                 pass
         return prof
 
@@ -192,7 +192,7 @@ class MemoryProfiler(base_profiler.BaseProfiler):
                 prof.add_code(code)
                 prof.compute_mem_overhead()
                 exec(code, self._globs, None)
-        except SystemExit:
+        except (SystemExit, KeyboardInterrupt):
             pass
         return prof
 
@@ -201,7 +201,10 @@ class MemoryProfiler(base_profiler.BaseProfiler):
         with _CodeEventsTracker() as prof:
             prof.add_code(self._run_object.__code__)
             prof.compute_mem_overhead()
-            self._run_object(*self._run_args, **self._run_kwargs)
+            try:
+                self._run_object(*self._run_args, **self._run_kwargs)
+            except KeyboardInterrupt:
+                pass
         return prof
 
     def run(self):
