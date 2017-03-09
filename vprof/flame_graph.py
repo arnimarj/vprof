@@ -4,11 +4,34 @@ import runpy
 import signal
 import time
 
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from vprof import base_profiler
 
 _SAMPLE_INTERVAL = 0.001
 
+FrameTuple = namedtuple('FrameTuple', 'co_name, co_filename, co_firstlineno')
+
+def _frame_passes_filter(frame):
+    if '/site-packages/twisted/' in frame.co_filename:
+        return False
+
+    '''
+    if '/site-packages/treq/' in frame.co_filename:
+        return False
+
+    if '/site-packages/pycountry/' in frame.co_filename:
+        return False
+
+    if '/site-packages/zope/interface/' in frame.co_filename:
+        return False
+
+    if '/site-packages/tblib/' in frame.co_filename:
+        return False
+
+    if '/lib/python2.7/' in frame.co_filename:
+        return False
+    '''
+    return True
 
 class _StatProfiler(object):
     """Statistical profiler.
@@ -45,10 +68,9 @@ class _StatProfiler(object):
         """
         stack = []
         while frame and frame != self.base_frame:
-            stack.append((
-                frame.f_code.co_name,
-                frame.f_code.co_filename,
-                frame.f_code.co_firstlineno))
+            frame_tuple = FrameTuple(frame.f_code.co_name, frame.f_code.co_filename, frame.f_code.co_firstlineno)
+            if _frame_passes_filter(frame_tuple):
+                stack.append(frame_tuple)
             frame = frame.f_back
         self._stats[tuple(stack)] += 1
         signal.setitimer(signal.ITIMER_PROF, _SAMPLE_INTERVAL)
