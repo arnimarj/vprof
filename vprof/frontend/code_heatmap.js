@@ -24,18 +24,17 @@ try {
  * @property {string} MAX_RUN_COLOR - Color that represents MAX_RUN_COUNT.
  */
 function CodeHeatmap(parent, data) {
-  this.MIN_RUN_COUNT = 1;
-  this.MAX_RUN_COUNT = 10000;
+  this.MIN_RUN_TIME = 0.000001;
+  this.MAX_RUN_TIME = data.runTime;
   this.MIN_RUN_COLOR = '#ebfaeb';
   this.MAX_RUN_COLOR = '#47d147';
-  this.COLOR_SCALE_POWER = 0.25;
   this.HELP_MESSAGE = (
     '<p>&#8226 Hover over line to see line execution count.</p>');
 
-  this.data_ = data.heatmaps;
+  this.data_ = data;
   this.parent_ = parent;
   this.heatmapScale_ = d3scale.scaleLog()
-    .domain([this.MIN_RUN_COUNT, this.MAX_RUN_COUNT])
+    .domain([this.MIN_RUN_TIME, this.MAX_RUN_TIME])
     .range([this.MIN_RUN_COLOR, this.MAX_RUN_COLOR]);
 }
 
@@ -54,7 +53,7 @@ CodeHeatmap.prototype.render = function() {
     .html('Inspected modules');
 
   moduleList.selectAll('.heatmap-module-name')
-    .data(this.data_)
+    .data(this.data_.heatmaps)
     .enter()
     .append('a')
     .attr('href', function(d) { return '#' + d.name; })
@@ -67,7 +66,7 @@ CodeHeatmap.prototype.render = function() {
     .attr('class', 'heatmap-code-container');
 
   var heatmapContainer = codeContainer.selectAll('div')
-    .data(this.data_)
+    .data(this.data_.heatmaps)
     .enter()
     .append('div')
     .attr('class', 'heatmap-src-file');
@@ -80,10 +79,8 @@ CodeHeatmap.prototype.render = function() {
     .html(function(d) { return d.name; });
 
   var renderedSources = [];
-  for (var i = 0; i < this.data_.length; i++) {
-    renderedSources.push(
-        this.renderCode_(this.data_[i].srcCode,
-                         this.data_[i].heatmap));
+  for (var i = 0; i < this.data_.heatmaps.length; i++) {
+    renderedSources.push(this.renderCode_(this.data_.heatmaps[i]));
   }
 
   var fileContainers = heatmapContainer.append('div')
@@ -100,9 +97,12 @@ CodeHeatmap.prototype.render = function() {
     .each(function(_, i) {
       d3select.select(fileContainers[i]).selectAll('.heatmap-src-line-normal')
         .on('mouseover', function(_, j) {
-          var runCount = renderedSources[i].lineMap[j];
-          if(runCount) {
-            self.showTooltip_(this, tooltip, runCount); }})
+          if(renderedSources[i].countMap[j]) {
+            self.showTooltip_(
+              this, tooltip, renderedSources[i].timeMap[j],
+              renderedSources[i].countMap[j], self.data_.runTime);
+          }
+        })
         .on('mouseout', function() { self.hideTooltip_(this, tooltip); });
     });
 };
@@ -111,12 +111,18 @@ CodeHeatmap.prototype.render = function() {
  * Shows line execution count inside tooltip and adds line highlighting.
  * @param {Object} element - Element representing highlighted line.
  * @param {Object} tooltip - Element representing tooltip.
- * @param {number} runCount - Number of line runs.
+ * @param {number} lineRuntime - Time spent on line.
+ * @param {number} lineRuncount - Line execution count.
  */
-CodeHeatmap.prototype.showTooltip_ = function(element, tooltip, runCount) {
+CodeHeatmap.prototype.showTooltip_ = function(element, tooltip,
+                                              lineRuntime, lineRuncount,
+                                              totalTime) {
   d3select.select(element).attr('class', 'heatmap-src-line-highlight');
   tooltip.attr('class', 'content-tooltip content-tooltip-visible')
-    .html('<b>Execution count: </b>' + runCount)
+    .html('<p><b>Time spent: </b>' + lineRuntime + ' s</p>' +
+          '<p><b>Total running time: </b>' + totalTime + ' s</p>' +
+          '<p><b>Percentage: </b>' + 100 * (lineRuntime / totalTime) + '%</p>' +
+          '<p><b>Run count: </b>' + lineRuncount + '</p>')
     .style('left', d3select.event.pageX)
     .style('top', d3select.event.pageY);
 };
@@ -132,28 +138,31 @@ CodeHeatmap.prototype.hideTooltip_ = function(element, tooltip) {
 };
 
 /**
- * Renders code.
- * @param {string} srcCode - Python source code.
- * @param {Object} heatmap - Python source heatmap.
+ * Renders source code.
+ * @param {Object} stats - Object that contains source code and all code stats.
  * @returns {Object}
  */
-CodeHeatmap.prototype.renderCode_ = function(srcCode, heatmap) {
-  var resultCode = [], lineMap = {}, srcIndex = 0;
-  for (var i = 0; i < srcCode.length; i++) {
-    if (srcCode[i][0] === 'line') {
-      var lineNumber = srcCode[i][1], codeLine = srcCode[i][2];
-      var runCount = heatmap[lineNumber];
-      resultCode.push(
-          this.formatSrcLine_(lineNumber, codeLine, runCount));
-      lineMap[srcIndex] = runCount;
+CodeHeatmap.prototype.renderCode_ = function(stats) {
+  var outputCode = [], timeMap = {}, srcIndex = 0, countMap = {};
+  for (var i = 0; i < stats.srcCode.length; i++) {
+    if (stats.srcCode[i][0] === 'line') {
+      var lineNumber = stats.srcCode[i][1], codeLine = stats.srcCode[i][2];
+      outputCode.push(
+          this.formatSrcLine_(lineNumber, codeLine, stats.heatmap[lineNumber]));
+      timeMap[srcIndex] = stats.heatmap[lineNumber];
+      countMap[srcIndex] = stats.executionCount[lineNumber];
       srcIndex++;
-    } else if (srcCode[i][0] === 'skip') {
-      resultCode.push(
-          "<div class='heatmap-skip-line'>" + srcCode[i][1] +
+    } else if (stats.srcCode[i][0] === 'skip') {
+      outputCode.push(
+          "<div class='heatmap-skip-line'>" + stats.srcCode[i][1] +
           ' lines skipped</div>');
     }
   }
-  return {'srcCode': resultCode.join(''), 'lineMap': lineMap};
+  return {
+    'srcCode': outputCode.join(''),
+    'timeMap': timeMap,
+    'countMap': countMap
+  };
 };
 
 /**

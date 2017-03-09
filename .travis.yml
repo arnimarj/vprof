@@ -9,10 +9,7 @@ python:
 addons:
   apt:
     packages:
-      - npm
-
-before_install:
-    - nvm install node
+      - nodejs
 
 install:
   - python setup.py deps_install
